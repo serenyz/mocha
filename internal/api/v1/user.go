@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type UserHandler struct {
@@ -35,7 +34,7 @@ func (h *UserHandler) getMe(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	cmd := &service.GetMeCommand{UUID: principal.UserUUID}
+	cmd := &service.GetMeCommand{UserID: principal.UserID}
 	res := &service.GetMeRes{}
 	if err := h.userService.GetMe(c.Request.Context(), cmd, res); err != nil {
 		return err
@@ -44,7 +43,7 @@ func (h *UserHandler) getMe(c *gin.Context) error {
 		Phone: res.Phone,
 		Email: res.Email,
 		PublicProfile: dto.PublicProfile{
-			UUID:         res.UUID,
+			ID:           res.ID,
 			Nickname:     res.Nickname,
 			AvatarURL:    res.AvatarURL,
 			URLExpiredAt: res.URLExpiredAt,
@@ -71,7 +70,7 @@ func (h *UserHandler) updateMe(c *gin.Context) error {
 	}
 
 	cmd := &service.UpdateMeCommand{
-		UUID:      principal.UserUUID,
+		UserID:    principal.UserID,
 		Nickname:  req.Nickname,
 		Gender:    req.Gender,
 		Signature: req.Signature,
@@ -88,7 +87,7 @@ func (h *UserHandler) updateMe(c *gin.Context) error {
 		Phone: res.Phone,
 		Email: res.Email,
 		PublicProfile: dto.PublicProfile{
-			UUID:         res.UUID,
+			ID:           res.ID,
 			Nickname:     res.Nickname,
 			AvatarURL:    res.AvatarURL,
 			URLExpiredAt: res.URLExpiredAt,
@@ -109,19 +108,14 @@ func (h *UserHandler) updateMyAvatar(c *gin.Context) error {
 		return fmt.Errorf("%w: %v", api.ErrInvalidArgument, err)
 	}
 
-	mediaUUID, err := uuid.Parse(req.MediaUUID)
-	if err != nil {
-		return api.ErrInvalidArgument
-	}
-
 	principal, err := middleware.Principal(c)
 	if err != nil {
 		return err
 	}
 
 	cmd := &service.UpdateAvatarCommand{
-		UserUUID:  principal.UserUUID,
-		MediaUUID: mediaUUID.String(),
+		UserID:  principal.UserID,
+		MediaID: req.MediaID,
 	}
 	res := &service.UpdateAvatarRes{}
 
@@ -130,7 +124,7 @@ func (h *UserHandler) updateMyAvatar(c *gin.Context) error {
 	}
 
 	api.OK[dto.UpdateMyAvatarResponse](c, http.StatusOK, dto.UpdateMyAvatarResponse{
-		MediaUUID:    res.MediaUUID,
+		MediaID:      res.MediaID,
 		AvatarURL:    res.AvatarURL,
 		URLExpiredAt: res.URLExpiredAt,
 	})
@@ -163,7 +157,7 @@ func (h *UserHandler) searchUsers(c *gin.Context) error {
 	users := make([]*dto.SearchUserItem, 0, len(res.Users))
 	for _, user := range res.Users {
 		users = append(users, &dto.SearchUserItem{
-			UUID:         user.UUID,
+			ID:           user.ID,
 			Nickname:     user.Nickname,
 			AvatarURL:    user.AvatarURL,
 			URLExpiredAt: user.URLExpiredAt,

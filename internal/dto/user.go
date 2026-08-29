@@ -32,7 +32,7 @@ type SearchUsersRequest struct {
 type SearchUserItem PublicProfile
 
 type PublicProfile struct {
-	UUID         string    `json:"uuid"`
+	ID           uint      `json:"id"`
 	Nickname     string    `json:"nickname"`
 	AvatarURL    string    `json:"avatar_url"`
 	URLExpiredAt time.Time `json:"url_expired_at"`
@@ -44,11 +44,11 @@ type PublicProfile struct {
 }
 
 type UpdateMyAvatarRequest struct {
-	MediaUUID string `json:"media_uuid" binding:"required"`
+	MediaID uint `json:"media_id" binding:"required"`
 }
 
 type UpdateMyAvatarResponse struct {
-	MediaUUID    string    `json:"media_uuid"`
+	MediaID      uint      `json:"media_id"`
 	AvatarURL    string    `json:"avatar_url"`
 	URLExpiredAt time.Time `json:"url_expired_at"`
 }

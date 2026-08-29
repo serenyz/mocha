@@ -17,9 +17,9 @@ API 前缀：`/api/v1`
 | `PUT` | `/api/v1/users/me/avatar` | 是 | 更换当前用户头像 |
 | `GET` | `/api/v1/users` | 是 | 搜索用户 |
 | `POST` | `/api/v1/media/uploads` | 是 | 申请媒体文件直传 |
-| `POST` | `/api/v1/media/uploads/:uuid/complete` | 是 | 确认媒体文件上传完成 |
+| `POST` | `/api/v1/media/uploads/:id/complete` | 是 | 确认媒体文件上传完成 |
 
-不提供通过 UUID 搜索用户的接口。
+用户和媒体均使用数据库主键作为业务 ID，不提供 UUID 字段。
 
 ## 2. 通用约定
 
@@ -38,6 +38,8 @@ Content-Type: application/json
 ```http
 Authorization: Bearer <access_token>
 ```
+
+同一用户同时只保留一个有效登录会话。用户在新设备或新客户端登录成功后，之前签发的 Access Token 和 Refresh Token 立即失效，旧客户端后续请求会收到 `UNAUTHENTICATED` 或 `INVALID_REFRESH_TOKEN`。Refresh Token 对客户端是不透明字符串，客户端不得解析或自行拼接。
 
 ### 2.3 成功响应
 
@@ -78,7 +80,7 @@ Authorization: Bearer <access_token>
 - Token 有效期字段：秒。
 - `country`：两个大写字母组成的国家或地区代码，例如 `CN`、`US`、`JP`。
 - `gender`：`0` 未知、`1` 男、`2` 女。
-- `uuid`、`media_uuid`：UUID 字符串。
+- `id`、`media_id`：大于 `0` 的整数 ID。
 - `avatar_url`、`media_url` 和上传 URL 均可能是带签名的临时 URL，不应持久化保存。
 
 ## 3. 认证接口
@@ -191,6 +193,8 @@ POST /api/v1/auth/login
 }
 ```
 
+登录成功会替换该用户之前的登录会话。客户端应保存本次响应中的 Access Token 和 Refresh Token，并停止使用此前保存的 Token。
+
 成功：
 
 ```http
@@ -207,7 +211,7 @@ HTTP/1.1 200 OK
     "expires_in": 900,
     "refresh_expires_in": 2592000,
     "user": {
-      "uuid": "019d4a55-6f40-7ab0-a2ad-7d677ea1d836",
+      "id": 101,
       "nickname": "Alice"
     }
   }
@@ -309,9 +313,9 @@ Authorization: Bearer <access_token>
     "phone": "13800138000",
     "email": "alice@example.com",
     "created_at": "2026-08-28T10:00:00+08:00",
-    "uuid": "019d4a55-6f40-7ab0-a2ad-7d677ea1d836",
+    "id": 101,
     "nickname": "Alice",
-    "avatar_url": "http://127.0.0.1:9000/mocha/media/image/2026/08/019d...?X-Amz-Algorithm=...",
+    "avatar_url": "http://127.0.0.1:9000/mocha/media/image/2026/08/4f82d80c...?X-Amz-Algorithm=...",
     "url_expired_at": "2026-08-29T10:15:00Z",
     "gender": 2,
     "birthday": "2001-03-18",
@@ -391,13 +395,13 @@ Content-Type: application/json
 
 ```json
 {
-  "media_uuid": "019d4a55-6f40-7ab0-a2ad-7d677ea1d836"
+  "media_id": 501
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `media_uuid` | string | 是 | 已上传完成、属于当前用户的图片 Media UUID |
+| `media_id` | integer | 是 | 已上传完成、属于当前用户的图片 Media ID |
 
 前端必须先完成媒体上传申请、对象存储直传和上传完成确认，再调用本接口更换头像。
 
@@ -411,8 +415,8 @@ HTTP/1.1 200 OK
 {
   "success": true,
   "data": {
-    "media_uuid": "019d4a55-6f40-7ab0-a2ad-7d677ea1d836",
-    "avatar_url": "http://127.0.0.1:9000/mocha/media/image/2026/08/019d...?X-Amz-Algorithm=...",
+    "media_id": 501,
+    "avatar_url": "http://127.0.0.1:9000/mocha/media/image/2026/08/4f82d80c...?X-Amz-Algorithm=...",
     "url_expired_at": "2026-08-29T10:15:00Z"
   }
 }
@@ -424,7 +428,7 @@ HTTP/1.1 200 OK
 
 | HTTP 状态码 | 错误码 | 说明 |
 | --- | --- | --- |
-| `400` | `INVALID_ARGUMENT` | 请求体或 `media_uuid` 格式不正确 |
+| `400` | `INVALID_ARGUMENT` | 请求体或 `media_id` 不正确 |
 | `401` | `UNAUTHENTICATED` | 登录状态无效 |
 | `404` | `MEDIA_NOT_FOUND` | Media 不存在、不属于当前用户或尚未上传完成 |
 
@@ -484,9 +488,9 @@ GET /api/v1/users?nickname=Ali&country=US&age=25&gender=2&cursor=120&limit=20
   "success": true,
   "data": [
     {
-      "uuid": "019d4a55-6f40-7ab0-a2ad-7d677ea1d836",
+      "id": 101,
       "nickname": "Alice",
-      "avatar_url": "http://127.0.0.1:9000/mocha/media/image/2026/08/019d...?X-Amz-Algorithm=...",
+      "avatar_url": "http://127.0.0.1:9000/mocha/media/image/2026/08/4f82d80c...?X-Amz-Algorithm=...",
       "url_expired_at": "2026-08-29T10:15:00Z",
       "gender": 2,
       "birthday": "2001-03-18",
@@ -537,7 +541,7 @@ GET /api/v1/users?nickname=Ali&country=US&age=25&gender=2&cursor=120&limit=20
 申请上传
 → 前端 PUT 文件到返回的对象存储 URL
 → 确认上传完成
-→ 使用 Media UUID 执行业务操作，例如更换头像
+→ 使用 Media ID 执行业务操作，例如更换头像
 ```
 
 当前只支持单次 PUT 直传，不支持分片上传。单个文件最大为 32 MiB。
@@ -587,10 +591,10 @@ HTTP/1.1 200 OK
 {
   "success": true,
   "data": {
-    "media_uuid": "019d4a55-6f40-7ab0-a2ad-7d677ea1d836",
+    "media_id": 501,
     "upload": {
       "method": "PUT",
-      "url": "http://127.0.0.1:9000/mocha/media/image/2026/08/019d...?X-Amz-Algorithm=...",
+      "url": "http://127.0.0.1:9000/mocha/media/image/2026/08/4f82d80c...?X-Amz-Algorithm=...",
       "headers": {
         "Content-Type": "image/jpeg"
       },
@@ -625,15 +629,13 @@ Content-Type: image/jpeg
 | `400` | `INVALID_ARGUMENT` | 请求结构、文件名或文件大小不正确 |
 | `400` | `INVALID_MEDIA_TYPE` | `type` 不受支持 |
 | `401` | `UNAUTHENTICATED` | 登录状态无效 |
-| `403` | `ACCOUNT_DISABLED` | 账号不可用 |
-| `404` | `USER_NOT_FOUND` | 用户不存在 |
 | `413` | `MEDIA_TOO_LARGE` | 文件超过 32 MiB |
 | `415` | `UNSUPPORTED_MEDIA_FORMAT` | MIME 类型无效，或与 `type` 不一致 |
 
 ### 5.2 确认媒体文件上传完成
 
 ```http
-POST /api/v1/media/uploads/:uuid/complete
+POST /api/v1/media/uploads/:id/complete
 Authorization: Bearer <access_token>
 ```
 
@@ -641,7 +643,7 @@ Authorization: Bearer <access_token>
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| `uuid` | string | 申请上传时返回的 `media_uuid` |
+| `id` | integer | 申请上传时返回的 `media_id` |
 
 本接口没有请求体。
 
@@ -657,11 +659,11 @@ HTTP/1.1 200 OK
 {
   "success": true,
   "data": {
-    "media_uuid": "019d4a55-6f40-7ab0-a2ad-7d677ea1d836",
+    "media_id": 501,
     "filename": "avatar.jpg",
     "mime_type": "image/jpeg",
     "filesize": 245678,
-    "media_url": "http://127.0.0.1:9000/mocha/media/image/2026/08/019d...?X-Amz-Algorithm=...",
+    "media_url": "http://127.0.0.1:9000/mocha/media/image/2026/08/4f82d80c...?X-Amz-Algorithm=...",
     "url_expired_at": "2026-08-29T10:15:00Z",
     "status": "uploaded"
   }
@@ -681,7 +683,7 @@ HTTP/1.1 200 OK
 
 | HTTP 状态码 | 错误码 | 说明 |
 | --- | --- | --- |
-| `400` | `INVALID_ARGUMENT` | 路径中的 UUID 格式不正确 |
+| `400` | `INVALID_ARGUMENT` | 路径中的 Media ID 不正确 |
 | `401` | `UNAUTHENTICATED` | 登录状态无效 |
 | `404` | `MEDIA_NOT_FOUND` | Media 不存在或不属于当前用户 |
 | `409` | `MEDIA_UPLOAD_INCOMPLETE` | 对象存储中尚未找到文件 |

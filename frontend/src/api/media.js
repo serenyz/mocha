@@ -35,8 +35,12 @@ export async function uploadMediaFile(file, upload) {
   }
 }
 
-export function completeMediaUpload(mediaUuid) {
-  return authenticatedRequest(`${MEDIA_PATH}/${encodeURIComponent(mediaUuid)}/complete`, {
+export function completeMediaUpload(mediaId) {
+  const normalizedId = Number(mediaId);
+  if (!Number.isSafeInteger(normalizedId) || normalizedId <= 0) {
+    throw new AuthApiError('服务端没有返回有效的媒体 ID', 'INVALID_UPLOAD_RESPONSE');
+  }
+  return authenticatedRequest(`${MEDIA_PATH}/${normalizedId}/complete`, {
     method: 'POST',
   });
 }

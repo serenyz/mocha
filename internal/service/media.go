@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"mime"
@@ -14,8 +16,6 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/google/uuid"
 )
 
 var directUploadTTL = time.Hour
@@ -23,7 +23,7 @@ var maxDirectUploadSize int64 = 32 << 20
 var getObjectTTL = time.Minute * 15
 
 type CreateMediaUploadCommand struct {
-	UserUUID string
+	UserID   uint
 	Type     string
 	Filename string
 	MIMEType string
@@ -31,20 +31,20 @@ type CreateMediaUploadCommand struct {
 }
 
 type CreateMediaUploadRes struct {
-	MediaUUID string
-	Method    string
-	URL       string
-	Headers   map[string]string
-	ExpireAt  time.Time
+	MediaID  uint
+	Method   string
+	URL      string
+	Headers  map[string]string
+	ExpireAt time.Time
 }
 
 type CompleteMediaUploadCommand struct {
-	UserUUID  string
-	MediaUUID string
+	UserID  uint
+	MediaID uint
 }
 
 type CompleteMediaUploadRes struct {
-	MediaUUID    string
+	MediaID      uint
 	Filename     string
 	MIMEType     string
 	FileSize     int64
@@ -60,12 +60,11 @@ type MediaService interface {
 
 type mediaService struct {
 	objs      ObjectStorageService
-	userRepo  repository.UserRepository
 	mediaRepo repository.MediaRepository
 }
 
-func NewMediaService(objs ObjectStorageService, userRepo repository.UserRepository, mediaRepo repository.MediaRepository) MediaService {
-	return &mediaService{objs: objs, userRepo: userRepo, mediaRepo: mediaRepo}
+func NewMediaService(objs ObjectStorageService, mediaRepo repository.MediaRepository) MediaService {
+	return &mediaService{objs: objs, mediaRepo: mediaRepo}
 }
 
 var _ MediaService = (*mediaService)(nil)
@@ -97,27 +96,13 @@ func (s *mediaService) CreateMediaUpload(ctx context.Context, cmd *CreateMediaUp
 		return err
 	}
 
-	user, err := s.userRepo.FindByUUID(ctx, cmd.UserUUID)
+	storageToken, err := newStorageToken()
 	if err != nil {
 		return err
 	}
 
-	if user == nil {
-		return api.ErrUserNotFound
-	}
-
-	if user.Status != model.UserStatusNormal {
-		return api.ErrAccountDisabled
-	}
-
-	mediaUUID, err := uuid.NewV7()
-	if err != nil {
-		return fmt.Errorf("generate media uuid: %w", err)
-	}
-
 	now := time.Now().UTC()
-	mediaUUIDString := mediaUUID.String()
-	storageKey := buildMediaStorageKey(mediaType, mediaUUIDString, now)
+	storageKey := buildMediaStorageKey(mediaType, storageToken, now)
 	upload := &PresignPutObjectRes{}
 	if err := s.objs.PresignPutObject(ctx, &PresignPutObjectCommand{
 		StorageKey:    storageKey,
@@ -133,8 +118,7 @@ func (s *mediaService) CreateMediaUpload(ctx context.Context, cmd *CreateMediaUp
 		headers = make(map[string]string)
 	}
 	media := &model.Media{
-		UUID:            mediaUUIDString,
-		UserID:          &user.ID,
+		UserID:          &cmd.UserID,
 		Type:            mediaType,
 		Filename:        filename,
 		MIMEType:        mimeType,
@@ -148,7 +132,7 @@ func (s *mediaService) CreateMediaUpload(ctx context.Context, cmd *CreateMediaUp
 		return err
 	}
 
-	res.MediaUUID = media.UUID
+	res.MediaID = media.ID
 	res.Method = http.MethodPut
 	res.URL = upload.URL
 	res.Headers = headers
@@ -157,15 +141,15 @@ func (s *mediaService) CreateMediaUpload(ctx context.Context, cmd *CreateMediaUp
 }
 
 func (s *mediaService) CompleteMediaUpload(ctx context.Context, cmd *CompleteMediaUploadCommand, res *CompleteMediaUploadRes) error {
-	mediaRecord, err := s.mediaRepo.FindDetailByUUID(ctx, cmd.MediaUUID)
+	mediaRecord, err := s.mediaRepo.FindByID(ctx, cmd.MediaID)
 	if err != nil {
 		return err
 	}
-	if mediaRecord == nil || mediaRecord.User.UUID != cmd.UserUUID {
+	if mediaRecord == nil || mediaRecord.UserID == nil || *mediaRecord.UserID != cmd.UserID {
 		return api.ErrMediaNotFound
 	}
 
-	res.MediaUUID = mediaRecord.UUID
+	res.MediaID = mediaRecord.ID
 	res.FileSize = mediaRecord.FileSize
 	res.Filename = mediaRecord.Filename
 	res.MIMEType = mediaRecord.MIMEType
@@ -283,8 +267,16 @@ func normalizeMediaFilename(raw string) (string, error) {
 	return filename, nil
 }
 
-func buildMediaStorageKey(mediaType model.MediaType, mediaUUID string, now time.Time) string {
-	return path.Join("media", string(mediaType), now.Format("2006/01"), mediaUUID)
+func newStorageToken() (string, error) {
+	value := make([]byte, 16)
+	if _, err := rand.Read(value); err != nil {
+		return "", fmt.Errorf("generate media storage token: %w", err)
+	}
+	return hex.EncodeToString(value), nil
+}
+
+func buildMediaStorageKey(mediaType model.MediaType, storageToken string, now time.Time) string {
+	return path.Join("media", string(mediaType), now.Format("2006/01"), storageToken)
 }
 
 func sameMIMEType(actual, expected string) bool {

@@ -7,9 +7,9 @@ import (
 	"mmchat/internal/middleware"
 	"mmchat/internal/service"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type MediaHandler struct {
@@ -24,7 +24,7 @@ func NewMediaHandler(mediaService service.MediaService, authentication gin.Handl
 func (h *MediaHandler) RegisterRoutes(group *gin.RouterGroup) {
 	group.Use(h.authentication)
 	group.POST("/uploads", middleware.Wrap(h.createUpload))
-	group.POST("/uploads/:uuid/complete", middleware.Wrap(h.completeUpload))
+	group.POST("/uploads/:id/complete", middleware.Wrap(h.completeUpload))
 }
 
 func (h *MediaHandler) createUpload(c *gin.Context) error {
@@ -39,7 +39,7 @@ func (h *MediaHandler) createUpload(c *gin.Context) error {
 	}
 
 	cmd := &service.CreateMediaUploadCommand{
-		UserUUID: principal.UserUUID,
+		UserID:   principal.UserID,
 		Type:     req.Type,
 		Filename: req.Filename,
 		MIMEType: req.MIMEType,
@@ -51,7 +51,7 @@ func (h *MediaHandler) createUpload(c *gin.Context) error {
 	}
 
 	api.OK[dto.CreateMediaUploadResponse](c, http.StatusOK, dto.CreateMediaUploadResponse{
-		MediaUUID: res.MediaUUID,
+		MediaID: res.MediaID,
 		Upload: dto.MediaUpload{
 			Method:    res.Method,
 			URL:       res.URL,
@@ -63,8 +63,8 @@ func (h *MediaHandler) createUpload(c *gin.Context) error {
 }
 
 func (h *MediaHandler) completeUpload(c *gin.Context) error {
-	mediaUUID, err := uuid.Parse(c.Param("uuid"))
-	if err != nil {
+	mediaID, err := strconv.ParseUint(c.Param("id"), 10, 0)
+	if err != nil || mediaID == 0 {
 		return api.ErrInvalidArgument
 	}
 
@@ -74,8 +74,8 @@ func (h *MediaHandler) completeUpload(c *gin.Context) error {
 	}
 
 	cmd := &service.CompleteMediaUploadCommand{
-		UserUUID:  principal.UserUUID,
-		MediaUUID: mediaUUID.String(),
+		UserID:  principal.UserID,
+		MediaID: uint(mediaID),
 	}
 	res := &service.CompleteMediaUploadRes{}
 
@@ -84,7 +84,7 @@ func (h *MediaHandler) completeUpload(c *gin.Context) error {
 	}
 
 	api.OK[dto.CompleteMediaUploadResponse](c, http.StatusOK, dto.CompleteMediaUploadResponse{
-		MediaUUID:    res.MediaUUID,
+		MediaID:      res.MediaID,
 		Filename:     res.Filename,
 		MIMEType:     res.MIMEType,
 		FileSize:     res.FileSize,

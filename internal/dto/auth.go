@@ -31,7 +31,7 @@ type LoginResponse struct {
 }
 
 type LoginUserSummary struct {
-	UUID     string `json:"uuid"`
+	ID       uint   `json:"id"`
 	Nickname string `json:"nickname"`
 }
 

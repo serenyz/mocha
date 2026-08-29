@@ -16,11 +16,11 @@ const (
 )
 
 type GetMeCommand struct {
-	UUID string
+	UserID uint
 }
 
 type publicProfile struct {
-	UUID     string
+	ID       uint
 	Nickname string
 	avatar
 	Gender    uint8
@@ -33,7 +33,7 @@ type publicProfile struct {
 type avatar struct {
 	AvatarURL    string
 	URLExpiredAt time.Time
-	MediaUUID    string
+	MediaID      uint
 }
 
 type GetMeRes struct {
@@ -44,7 +44,7 @@ type GetMeRes struct {
 }
 
 type UpdateMeCommand struct {
-	UUID      string
+	UserID    uint
 	Nickname  *string
 	Gender    *uint8
 	Signature *string
@@ -72,8 +72,8 @@ type SearchUsersRes struct {
 }
 
 type UpdateAvatarCommand struct {
-	UserUUID  string
-	MediaUUID string
+	UserID  uint
+	MediaID uint
 }
 
 type UpdateAvatarRes struct {
@@ -113,12 +113,12 @@ func NewUserService(
 }
 
 func (s *userService) GetMe(ctx context.Context, cmd *GetMeCommand, res *GetMeRes) error {
-	detail, err := s.userRepo.FindDetailByUUID(ctx, cmd.UUID)
+	detail, err := s.userRepo.FindDetailByID(ctx, cmd.UserID)
 	if err != nil {
 		return err
 	}
 
-	res.UUID = detail.UUID
+	res.ID = detail.ID
 	res.Phone = *detail.Phone
 	res.Email = detail.Email
 	res.Nickname = detail.Profile.Nickname
@@ -137,12 +137,12 @@ func (s *userService) GetMe(ctx context.Context, cmd *GetMeCommand, res *GetMeRe
 }
 
 func (s *userService) UpdateMe(ctx context.Context, cmd *UpdateMeCommand, res *UpdateMeRes) error {
-	old, err := s.userRepo.FindDetailByUUID(ctx, cmd.UUID)
+	old, err := s.userRepo.FindDetailByID(ctx, cmd.UserID)
 	if err != nil {
 		return err
 	}
 
-	res.UUID = old.UUID
+	res.ID = old.ID
 	res.Phone = *old.Phone
 	res.Email = old.Email
 	res.CreatedAt = old.CreatedAt
@@ -219,12 +219,12 @@ func (s *userService) UpdateMe(ctx context.Context, cmd *UpdateMeCommand, res *U
 }
 
 func (s *userService) UpdateAvatar(ctx context.Context, cmd *UpdateAvatarCommand, res *UpdateAvatarRes) error {
-	mediaRecord, err := s.mediaRepo.FindDetailByUUID(ctx, cmd.MediaUUID)
+	mediaRecord, err := s.mediaRepo.FindByID(ctx, cmd.MediaID)
 	if err != nil {
 		return err
 	}
-	if mediaRecord == nil || mediaRecord.User == nil ||
-		mediaRecord.User.UUID != cmd.UserUUID ||
+	if mediaRecord == nil || mediaRecord.UserID == nil ||
+		*mediaRecord.UserID != cmd.UserID ||
 		mediaRecord.Status != model.MediaStatusUploaded ||
 		mediaRecord.Type != model.MediaTypeImage {
 		return api.ErrMediaNotFound
@@ -242,7 +242,7 @@ func (s *userService) UpdateAvatar(ctx context.Context, cmd *UpdateAvatarCommand
 		return err
 	}
 
-	res.MediaUUID = mediaRecord.UUID
+	res.MediaID = mediaRecord.ID
 	res.AvatarURL = getObjectRes.URL
 	res.URLExpiredAt = getObjectRes.ExpiresAt
 	return nil
@@ -340,7 +340,7 @@ func (s *userService) SearchUsers(ctx context.Context, cmd *SearchUsersCommand, 
 	res.Users = make([]*publicProfile, len(users))
 	for i, user := range users {
 		res.Users[i] = &publicProfile{
-			UUID:      user.UUID,
+			ID:        user.ID,
 			Nickname:  user.Profile.Nickname,
 			Gender:    user.Profile.Gender,
 			Signature: user.Profile.Signature,
@@ -406,6 +406,6 @@ func (s *userService) setAvatarURL(ctx context.Context, avatarMedia *model.Media
 
 	profile.AvatarURL = getObjectRes.URL
 	profile.URLExpiredAt = getObjectRes.ExpiresAt
-	profile.MediaUUID = avatarMedia.UUID
+	profile.MediaID = avatarMedia.ID
 	return nil
 }

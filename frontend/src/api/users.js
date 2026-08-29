@@ -13,10 +13,10 @@ export function updateMyProfile(changes) {
   });
 }
 
-export function updateMyAvatar(mediaUuid) {
+export function updateMyAvatar(mediaId) {
   return authenticatedRequest(`${USERS_PATH}/me/avatar`, {
     method: 'PUT',
-    body: JSON.stringify({ media_uuid: mediaUuid }),
+    body: JSON.stringify({ media_id: mediaId }),
   });
 }
 

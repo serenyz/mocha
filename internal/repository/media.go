@@ -8,13 +8,11 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type MediaRepository interface {
 	Create(ctx context.Context, media *model.Media) error
-	FindByUUID(ctx context.Context, mediaUUID string) (*model.Media, error)
-	FindDetailByUUID(ctx context.Context, mediaUUID string) (*model.Media, error)
+	FindByID(ctx context.Context, id uint) (*model.Media, error)
 	MarkUploaded(ctx context.Context, ID uint, etag string, uploadedAt time.Time) (bool, error)
 }
 
@@ -35,27 +33,13 @@ func (r *mediaRepository) Create(ctx context.Context, media *model.Media) error 
 	return nil
 }
 
-func (r *mediaRepository) FindDetailByUUID(ctx context.Context, mediaUUID string) (*model.Media, error) {
-	detail, err := gorm.G[model.Media](r.db).
-		Joins(clause.InnerJoin.Association("User"), nil).
-		Where("`media`.`uuid` = ?", mediaUUID).
-		Take(ctx)
+func (r *mediaRepository) FindByID(ctx context.Context, id uint) (*model.Media, error) {
+	record, err := gorm.G[model.Media](r.db).Where("id = ?", id).Take(ctx)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("find media detail by uuid: %w", err)
-	}
-	return &detail, nil
-}
-
-func (r *mediaRepository) FindByUUID(ctx context.Context, mediaUUID string) (*model.Media, error) {
-	record, err := gorm.G[model.Media](r.db).Where("uuid = ?", mediaUUID).Take(ctx)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("find media by uuid: %w", err)
+		return nil, fmt.Errorf("find media by id: %w", err)
 	}
 	return &record, nil
 }

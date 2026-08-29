@@ -345,8 +345,8 @@ export default function WorkspacePage({ session, onSignedOut }) {
     try {
       const requested = await requestMediaUpload(file);
       await uploadMediaFile(file, requested.upload);
-      await completeMediaUpload(requested.media_uuid);
-      const avatar = await updateMyAvatar(requested.media_uuid);
+      await completeMediaUpload(requested.media_id);
+      const avatar = await updateMyAvatar(requested.media_id);
       setProfile((current) => current ? { ...current, ...avatar } : current);
       setNotice({ status: 'success', title: '头像已更新', description: '新头像已经保存。' });
     } catch (error) {
@@ -524,7 +524,7 @@ export default function WorkspacePage({ session, onSignedOut }) {
         <Notice notice={notice} />
         {!lastSearch && !searching && !notice && <div className="panel-empty contact-empty"><Icon name="contacts" size={34} /><p>可以按昵称、地区、年龄或手机号查找伙伴。</p></div>}
         {lastSearch && !searching && !notice && searchResults.length === 0 && <div className="panel-empty contact-empty"><Icon name="search" size={31} /><p>没有找到符合条件的用户，换个条件试试。</p></div>}
-        {searchResults.length > 0 && <div className="contact-result-list">{searchResults.map((user, index) => <SearchResult user={user} onOpen={setSelectedUser} key={`${user.nickname}-${user.birthday || ''}-${index}`} />)}{searchMeta.has_more && <button className="load-more-users" type="button" onClick={() => handleSearch(null, true)} disabled={loadingMore}>{loadingMore ? <><Spinner />加载中</> : '加载更多'}</button>}</div>}
+        {searchResults.length > 0 && <div className="contact-result-list">{searchResults.map((user, index) => <SearchResult user={user} onOpen={setSelectedUser} key={user.id || `${user.nickname}-${user.birthday || ''}-${index}`} />)}{searchMeta.has_more && <button className="load-more-users" type="button" onClick={() => handleSearch(null, true)} disabled={loadingMore}>{loadingMore ? <><Spinner />加载中</> : '加载更多'}</button>}</div>}
       </div>
     </>;
 

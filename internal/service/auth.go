@@ -48,7 +48,7 @@ type LoginRes struct {
 }
 
 type UserDetail struct {
-	UUID     string
+	ID       uint
 	Nickname string
 }
 
@@ -68,7 +68,7 @@ type AuthService interface {
 	Register(ctx context.Context, cmd *RegisterCommand) error
 	Login(ctx context.Context, cmd *LoginCommand, res *LoginRes) error
 	Refresh(ctx context.Context, cmd *RefreshCommand, res *RefreshRes) error
-	Logout(ctx context.Context, SessionID string) error
+	Logout(ctx context.Context, userID uint, sessionID string) error
 }
 
 type authService struct {
@@ -143,18 +143,12 @@ func (s *authService) Register(ctx context.Context, cmd *RegisterCommand) error 
 		return err
 	}
 
-	uid, err := uuid.NewV7()
-	if err != nil {
-		return fmt.Errorf("generate user uuid: %w", err)
-	}
-
 	PasswordHash, err := bcrypt.GenerateFromPassword([]byte(cmd.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
 
 	user := &model.User{
-		UUID:         uid.String(),
 		Phone:        &phone,
 		PasswordHash: string(PasswordHash),
 		Role:         model.UserRoleNormal,
@@ -211,13 +205,13 @@ func (s *authService) Login(ctx context.Context, cmd *LoginCommand, res *LoginRe
 	}
 	sessionID := sessionUUID.String()
 
-	refreshToken, err := s.refreshTokenProvider.Generate(sessionID)
+	refreshToken, err := s.refreshTokenProvider.Generate(user.ID, sessionID)
 	if err != nil {
 		return err
 	}
 
 	accessToken, err := s.accessTokenIssuer.Issue(AccessClaims{
-		UserUUID:  user.UUID,
+		UserID:    user.ID,
 		SessionID: sessionID,
 	})
 	if err != nil {
@@ -227,10 +221,9 @@ func (s *authService) Login(ctx context.Context, cmd *LoginCommand, res *LoginRe
 	session := &Session{
 		ID:               sessionID,
 		UserID:           user.ID,
-		UserUUID:         user.UUID,
 		RefreshTokenHash: refreshToken.Hash,
 	}
-	if err := s.sessionService.CreateSession(ctx, session); err != nil {
+	if err := s.sessionService.ReplaceSession(ctx, session); err != nil {
 		return err
 	}
 
@@ -243,7 +236,7 @@ func (s *authService) Login(ctx context.Context, cmd *LoginCommand, res *LoginRe
 	res.ExpiresIn = accessToken.ExpiresIn
 	res.RefreshExpiresIn = s.sessionService.TTLSeconds()
 	res.User = UserDetail{
-		UUID:     user.UUID,
+		ID:       user.ID,
 		Nickname: profile.Nickname,
 	}
 
@@ -251,17 +244,24 @@ func (s *authService) Login(ctx context.Context, cmd *LoginCommand, res *LoginRe
 }
 
 func (s *authService) Refresh(ctx context.Context, cmd *RefreshCommand, res *RefreshRes) error {
-	sessionID, err := s.refreshTokenProvider.ParseSessionID(cmd.RefreshToken)
+	identity, err := s.refreshTokenProvider.ParseIdentity(
+		cmd.RefreshToken,
+	)
 	if err != nil {
 		return api.ErrInvalidRefreshToken
 	}
 
-	session, err := s.sessionService.GetSession(ctx, sessionID)
+	session, err := s.sessionService.GetSession(
+		ctx,
+		identity.UserID,
+	)
 	if err != nil {
 		return err
 	}
 
-	if session == nil {
+	if session == nil ||
+		session.UserID != identity.UserID ||
+		session.ID != identity.SessionID {
 		return api.ErrInvalidRefreshToken
 	}
 
@@ -269,44 +269,56 @@ func (s *authService) Refresh(ctx context.Context, cmd *RefreshCommand, res *Ref
 		return api.ErrInvalidRefreshToken
 	}
 
-	remainingTTL := time.Until(time.Unix(session.ExpiresAt, 0))
+	remainingTTL := time.Until(
+		time.Unix(session.ExpiresAt, 0),
+	)
 	if remainingTTL < time.Second {
-		_ = s.sessionService.DeleteSession(ctx, sessionID)
+		_, _ = s.sessionService.DeleteSession(ctx, session.UserID, session.ID)
 		return api.ErrInvalidRefreshToken
 	}
 
-	user, err := s.userRepo.FindByID(ctx, session.UserID)
+	user, err := s.userRepo.FindByID(
+		ctx,
+		session.UserID,
+	)
 	if err != nil {
 		return err
 	}
 
 	if user == nil {
-		_ = s.sessionService.DeleteSession(ctx, sessionID)
+		_, _ = s.sessionService.DeleteSession(ctx, session.UserID, session.ID)
 		return api.ErrInvalidRefreshToken
 	}
 
 	if user.Status != model.UserStatusNormal {
-		_ = s.sessionService.DeleteSession(ctx, sessionID)
+		_, _ = s.sessionService.DeleteSession(ctx, session.UserID, session.ID)
 		return api.ErrAccountDisabled
 	}
 
-	nextRefreshToken, err := s.refreshTokenProvider.Generate(sessionID)
+	nextRefreshToken, err := s.refreshTokenProvider.Generate(session.UserID, session.ID)
 	if err != nil {
 		return err
 	}
 
-	nextAccessToken, err := s.accessTokenIssuer.Issue(AccessClaims{
-		UserUUID:  user.UUID,
-		SessionID: sessionID,
-	})
+	nextAccessToken, err := s.accessTokenIssuer.Issue(
+		AccessClaims{
+			UserID:    session.UserID,
+			SessionID: session.ID,
+		},
+	)
 	if err != nil {
 		return err
 	}
 
 	rotated, err := s.sessionService.RotateSession(
-		ctx, sessionID, session.RefreshTokenHash, nextRefreshToken.Hash, remainingTTL)
+		ctx,
+		session.UserID,
+		session.ID,
+		session.RefreshTokenHash,
+		nextRefreshToken.Hash,
+	)
 	if err != nil {
-		return fmt.Errorf("rotate refresh token: %w", err)
+		return err
 	}
 	if !rotated {
 		return api.ErrInvalidRefreshToken
@@ -316,16 +328,18 @@ func (s *authService) Refresh(ctx context.Context, cmd *RefreshCommand, res *Ref
 	res.RefreshToken = nextRefreshToken.Value
 	res.ExpiresIn = nextAccessToken.ExpiresIn
 	res.RefreshExpiresIn = int64(remainingTTL / time.Second)
+
 	return nil
 }
 
-func (s *authService) Logout(ctx context.Context, SessionID string) error {
-	if SessionID == "" {
+func (s *authService) Logout(ctx context.Context, userID uint, sessionID string) error {
+	if userID == 0 || sessionID == "" {
 		return api.ErrUnauthenticated
 	}
 
-	if err := s.sessionService.DeleteSession(ctx, SessionID); err != nil {
+	if _, err := s.sessionService.DeleteSession(ctx, userID, sessionID); err != nil {
 		return fmt.Errorf("delete login session: %w", err)
 	}
+
 	return nil
 }

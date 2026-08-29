@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ var (
 )
 
 type AccessClaims struct {
-	UserUUID  string
+	UserID    uint
 	SessionID string
 }
 
@@ -33,6 +34,7 @@ type AccessToken struct {
 type RefreshToken struct {
 	Value     string
 	Hash      string
+	UserID    uint
 	SessionID string
 }
 
@@ -84,6 +86,13 @@ func NewAccessTokenProvider(issuer, secret string, ttl time.Duration) (AccessTok
 }
 
 func (p *jwtTokenProvider) Issue(claim AccessClaims) (*AccessToken, error) {
+	if claim.UserID == 0 {
+		return nil, ErrInvalidAccessToken
+	}
+	if _, err := uuid.Parse(claim.SessionID); err != nil {
+		return nil, ErrInvalidAccessToken
+	}
+
 	now := time.Now().UTC()
 	rawToken, err := jwt.NewWithClaims(
 		jwt.SigningMethodHS256,
@@ -92,7 +101,7 @@ func (p *jwtTokenProvider) Issue(claim AccessClaims) (*AccessToken, error) {
 			TokenType: "access",
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    p.issuer,
-				Subject:   claim.UserUUID,
+				Subject:   strconv.FormatUint(uint64(claim.UserID), 10),
 				IssuedAt:  jwt.NewNumericDate(now),
 				NotBefore: jwt.NewNumericDate(now),
 				ExpiresAt: jwt.NewNumericDate(now.Add(p.ttl)),
@@ -134,19 +143,29 @@ func (p *jwtTokenProvider) Verify(rawToken string) (*AccessClaims, error) {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidAccessToken, err)
 	}
 
-	if !parsedToken.Valid {
+	if !parsedToken.Valid || claim.TokenType != "access" {
 		return nil, ErrInvalidAccessToken
 	}
 
-	return &AccessClaims{
-		UserUUID:  claim.Subject,
-		SessionID: claim.SessionID,
-	}, nil
+	userID, err := strconv.ParseUint(claim.Subject, 10, strconv.IntSize)
+	if err != nil || userID == 0 {
+		return nil, ErrInvalidAccessToken
+	}
+	if _, err := uuid.Parse(claim.SessionID); err != nil {
+		return nil, ErrInvalidAccessToken
+	}
+
+	return &AccessClaims{UserID: uint(userID), SessionID: claim.SessionID}, nil
+}
+
+type RefreshTokenIdentity struct {
+	UserID    uint
+	SessionID string
 }
 
 type RefreshTokenProvider interface {
-	Generate(sessionID string) (*RefreshToken, error)
-	ParseSessionID(rawToken string) (string, error)
+	Generate(userID uint, sessionID string) (*RefreshToken, error)
+	ParseIdentity(rawToken string) (*RefreshTokenIdentity, error)
 	Match(rawToken string, expectedHash string) bool
 }
 
@@ -158,7 +177,10 @@ func NewRefreshTokenProvider() RefreshTokenProvider {
 	return &opaqueRefreshTokenProvider{}
 }
 
-func (p *opaqueRefreshTokenProvider) Generate(sessionID string) (*RefreshToken, error) {
+func (p *opaqueRefreshTokenProvider) Generate(userID uint, sessionID string) (*RefreshToken, error) {
+	if userID == 0 {
+		return nil, ErrInvalidRefreshToken
+	}
 	if _, err := uuid.Parse(sessionID); err != nil {
 		return nil, ErrInvalidRefreshToken
 	}
@@ -168,30 +190,40 @@ func (p *opaqueRefreshTokenProvider) Generate(sessionID string) (*RefreshToken, 
 		return nil, fmt.Errorf("generate refresh token: %w", err)
 	}
 
-	rawToken := sessionID + "." + base64.RawURLEncoding.EncodeToString(secret)
+	rawToken := strings.Join([]string{strconv.FormatUint(uint64(userID), 10), sessionID, base64.RawURLEncoding.EncodeToString(secret)}, ".")
 	return &RefreshToken{
 		Value:     rawToken,
 		Hash:      hashRefreshToken(rawToken),
+		UserID:    userID,
 		SessionID: sessionID,
 	}, nil
 }
 
-func (p *opaqueRefreshTokenProvider) ParseSessionID(rawToken string) (string, error) {
-	sessionID, encodedSecret, found := strings.Cut(rawToken, ".")
-	if !found || sessionID == "" || encodedSecret == "" {
-		return "", ErrInvalidRefreshToken
+func (p *opaqueRefreshTokenProvider) ParseIdentity(rawToken string) (*RefreshTokenIdentity, error) {
+	parts := strings.Split(rawToken, ".")
+	if len(parts) != 3 {
+		return nil, ErrInvalidRefreshToken
 	}
 
+	parsedUserID, err := strconv.ParseUint(parts[0], 10, strconv.IntSize)
+	if err != nil || parsedUserID == 0 || parts[0] != strconv.FormatUint(parsedUserID, 10) {
+		return nil, ErrInvalidRefreshToken
+	}
+
+	sessionID := parts[1]
 	if _, err := uuid.Parse(sessionID); err != nil {
-		return "", ErrInvalidRefreshToken
+		return nil, ErrInvalidRefreshToken
 	}
 
-	secret, err := base64.RawURLEncoding.DecodeString(encodedSecret)
+	secret, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil || len(secret) != 32 {
-		return "", ErrInvalidRefreshToken
+		return nil, ErrInvalidRefreshToken
 	}
 
-	return sessionID, nil
+	return &RefreshTokenIdentity{
+		UserID:    uint(parsedUserID),
+		SessionID: sessionID,
+	}, nil
 }
 
 func (p *opaqueRefreshTokenProvider) Match(rawToken string, expectedHash string) bool {

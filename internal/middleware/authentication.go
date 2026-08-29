@@ -28,14 +28,16 @@ func Authentication(verifier service.AccessTokenVerifier, sessionService service
 			return
 		}
 
-		session, err := sessionService.GetSession(c.Request.Context(), claims.SessionID)
+		session, err := sessionService.GetSession(c.Request.Context(), claims.UserID)
 		if err != nil {
 			_ = c.Error(fmt.Errorf("get authentication session: %w", err))
 			c.Abort()
 			return
 		}
 
-		if session == nil {
+		if session == nil ||
+			session.UserID != claims.UserID ||
+			session.ID != claims.SessionID {
 			_ = c.Error(api.ErrUnauthenticated)
 			c.Abort()
 			return

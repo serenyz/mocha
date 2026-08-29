@@ -29,8 +29,7 @@ type UserRepository interface {
 	ExistsByPhone(ctx context.Context, phone string) (bool, error)
 	CreateWithProfile(ctx context.Context, user *model.User, profile *model.UserProfile) error
 	FindByPhone(ctx context.Context, phone string) (*model.User, error)
-	FindDetailByUUID(ctx context.Context, userUUID string) (*model.User, error)
-	FindByUUID(ctx context.Context, userUUID string) (*model.User, error)
+	FindDetailByID(ctx context.Context, id uint) (*model.User, error)
 	FindByID(ctx context.Context, id uint) (*model.User, error)
 	UpdateLastLoginAt(ctx context.Context, id uint, at time.Time) error
 	SearchUsers(ctx context.Context, params *SearchUsersParams) ([]model.User, error)
@@ -117,11 +116,11 @@ func (r *userRepository) UpdateLastLoginAt(ctx context.Context, id uint, at time
 	return nil
 }
 
-func (r *userRepository) FindDetailByUUID(ctx context.Context, userUUID string) (*model.User, error) {
+func (r *userRepository) FindDetailByID(ctx context.Context, id uint) (*model.User, error) {
 	detail, err := gorm.G[model.User](r.db).
 		Joins(clause.InnerJoin.Association("Profile"), nil).
 		Joins(clause.LeftJoin.Association("Profile.AvatarMedia"), nil).
-		Where("`user`.`uuid` = ?", userUUID).
+		Where("`user`.`id` = ?", id).
 		Take(ctx)
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -129,22 +128,10 @@ func (r *userRepository) FindDetailByUUID(ctx context.Context, userUUID string) 
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("find user detail by uuid: %w", err)
+		return nil, fmt.Errorf("find user detail by id: %w", err)
 	}
 
 	return &detail, nil
-}
-
-func (r *userRepository) FindByUUID(ctx context.Context, userUUID string) (*model.User, error) {
-	user, err := gorm.G[model.User](r.db).Where("uuid = ?", userUUID).Take(ctx)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("find user by uuid: %w", err)
-	}
-	return &user, nil
 }
 
 func (r *userRepository) SearchUsers(ctx context.Context, params *SearchUsersParams) ([]model.User, error) {

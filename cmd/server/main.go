@@ -62,7 +62,7 @@ func bootstrap(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	if err != nil {
 		zlog.Fatal(fmt.Sprintf("Init object storage service: %s", err))
 	}
-	mediaService := service.NewMediaService(objs, userRepo, mediaRepo)
+	mediaService := service.NewMediaService(objs, mediaRepo)
 	userService := service.NewUserService(userRepo, userProfileRepo, mediaRepo, objs)
 
 	engine := newEngine()

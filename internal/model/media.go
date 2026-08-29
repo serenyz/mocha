@@ -9,9 +9,8 @@ import (
 type Media struct {
 	gorm.Model
 
-	UUID   string `gorm:"type:char(36);not null;uniqueIndex;comment:媒体UUID"`
-	UserID *uint  `gorm:"index;comment:所属用户ID"`
-	User   *User  `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	UserID *uint `gorm:"index;comment:所属用户ID"`
+	User   *User `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 
 	Type       MediaType   `gorm:"type:varchar(16);not null;index;comment:媒体类型"`
 	Filename   string      `gorm:"type:varchar(255);not null;comment:原始文件名"`

@@ -86,7 +86,7 @@ func (h *AuthHandler) login(c *gin.Context) error {
 		ExpiresIn:        res.ExpiresIn,
 		RefreshExpiresIn: res.RefreshExpiresIn,
 		User: dto.LoginUserSummary{
-			UUID:     res.User.UUID,
+			ID:       res.User.ID,
 			Nickname: res.User.Nickname,
 		},
 	})
@@ -115,12 +115,15 @@ func (h *AuthHandler) refresh(c *gin.Context) error {
 }
 
 func (h *AuthHandler) logout(c *gin.Context) error {
-	value, exists := c.Get(middleware.PrincipalKey)
-	if !exists {
-		return api.ErrUnauthenticated
+	principal, err := middleware.Principal(c)
+	if err != nil {
+		return err
 	}
-	principal := value.(*service.AccessClaims)
-	if err := h.authService.Logout(c.Request.Context(), principal.SessionID); err != nil {
+	if err := h.authService.Logout(
+		c.Request.Context(),
+		principal.UserID,
+		principal.SessionID,
+	); err != nil {
 		return err
 	}
 	api.Success(c, http.StatusOK)

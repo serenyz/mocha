@@ -22,6 +22,6 @@ func (redisKey) RegisterCodeHourlyLimitKey(phone string) string {
 
 const authSessionPrefix = "mocha:auth:session"
 
-func (redisKey) AuthSessionKey(sessionID string) string {
-	return fmt.Sprintf("%s:%s", authSessionPrefix, sessionID)
+func (redisKey) AuthSessionKey(userID uint) string {
+	return fmt.Sprintf("%s:%d", authSessionPrefix, userID)
 }

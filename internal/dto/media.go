@@ -10,8 +10,8 @@ type CreateMediaUploadRequest struct {
 }
 
 type CreateMediaUploadResponse struct {
-	MediaUUID string      `json:"media_uuid"`
-	Upload    MediaUpload `json:"upload"`
+	MediaID uint        `json:"media_id"`
+	Upload  MediaUpload `json:"upload"`
 }
 
 type MediaUpload struct {
@@ -22,7 +22,7 @@ type MediaUpload struct {
 }
 
 type CompleteMediaUploadResponse struct {
-	MediaUUID    string    `json:"media_uuid"`
+	MediaID      uint      `json:"media_id"`
 	Filename     string    `json:"filename"`
 	MIMEType     string    `json:"mime_type"`
 	FileSize     int64     `json:"filesize"`

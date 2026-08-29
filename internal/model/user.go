@@ -9,7 +9,6 @@ import (
 type User struct {
 	gorm.Model
 
-	UUID         string     `gorm:"type:char(36);not null;uniqueIndex;comment:公开用户ID"`
 	Phone        *string    `gorm:"type:varchar(20);uniqueIndex;comment:手机号"`
 	Email        *string    `gorm:"type:varchar(255);uniqueIndex;comment:邮箱"`
 	PasswordHash string     `gorm:"type:varchar(255);not null;comment:密码哈希" json:"-"`
