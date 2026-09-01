@@ -45,11 +45,12 @@ type CompleteMediaUploadCommand struct {
 
 type CompleteMediaUploadRes struct {
 	MediaID      uint
+	Type         model.MediaType
 	Filename     string
 	MIMEType     string
-	FileSize     int64
+	Size         int64
 	Status       string
-	MediaURL     string
+	URL          string
 	URLExpiredAt time.Time
 }
 
@@ -150,65 +151,52 @@ func (s *mediaService) CompleteMediaUpload(ctx context.Context, cmd *CompleteMed
 	}
 
 	res.MediaID = mediaRecord.ID
-	res.FileSize = mediaRecord.FileSize
+	res.Type = mediaRecord.Type
+	res.Size = mediaRecord.FileSize
 	res.Filename = mediaRecord.Filename
 	res.MIMEType = mediaRecord.MIMEType
 	res.Status = model.MediaStatusUploaded.String()
 
-	if mediaRecord.Status == model.MediaStatusUploaded {
-		ccmd := &PresignGetObjectCommand{
-			StorageKey: mediaRecord.StorageKey,
-			ExpireIn:   getObjectTTL,
-		}
-		rres := &PresignGetObjectRes{}
-		if err := s.objs.PresignGetObject(ctx, ccmd, rres); err != nil {
-			return err
-		}
-		res.MediaURL = rres.URL
-		res.URLExpiredAt = rres.ExpiresAt
-		return nil
-	}
-
-	if mediaRecord.Status != model.MediaStatusPending {
+	if mediaRecord.Status != model.MediaStatusUploaded && mediaRecord.Status != model.MediaStatusPending {
 		return api.ErrMediaStatusConflict
 	}
-
-	stat := &StatObjectRes{}
-	if err := s.objs.StatObject(ctx, mediaRecord.StorageKey, stat); err != nil {
-		if errors.Is(err, ErrObjectNotFound) {
-			return api.ErrMediaUploadIncomplete
-		}
-		return err
-	}
-	if stat.Size != mediaRecord.FileSize {
-		return api.ErrMediaSizeMismatch
-	}
-	if !sameMIMEType(stat.ContentType, mediaRecord.MIMEType) {
-		return api.ErrMediaMIMETypeMismatch
-	}
-	if stat.LastModified.After(mediaRecord.UploadExpiresAt) {
-		return api.ErrMediaUploadExpired
-	}
-
-	updated, err := s.mediaRepo.MarkUploaded(ctx, mediaRecord.ID, stat.ETag, stat.LastModified)
-	if err != nil {
-		return err
-	}
-	if updated {
-		ccmd := &PresignGetObjectCommand{
-			StorageKey: mediaRecord.StorageKey,
-			ExpireIn:   getObjectTTL,
-		}
-		rres := &PresignGetObjectRes{}
-		if err := s.objs.PresignGetObject(ctx, ccmd, rres); err != nil {
+	if mediaRecord.Status == model.MediaStatusPending {
+		stat := &StatObjectRes{}
+		if err := s.objs.StatObject(ctx, mediaRecord.StorageKey, stat); err != nil {
+			if errors.Is(err, ErrObjectNotFound) {
+				return api.ErrMediaUploadIncomplete
+			}
 			return err
 		}
-		res.MediaURL = rres.URL
-		res.URLExpiredAt = rres.ExpiresAt
-		return nil
+		if stat.Size != mediaRecord.FileSize {
+			return api.ErrMediaSizeMismatch
+		}
+		if !sameMIMEType(stat.ContentType, mediaRecord.MIMEType) {
+			return api.ErrMediaMIMETypeMismatch
+		}
+		if stat.LastModified.After(mediaRecord.UploadExpiresAt) {
+			return api.ErrMediaUploadExpired
+		}
+
+		updated, err := s.mediaRepo.MarkUploaded(ctx, mediaRecord.ID, stat.ETag, stat.LastModified)
+		if err != nil {
+			return err
+		}
+		if !updated {
+			return api.ErrMediaStatusConflict
+		}
 	}
 
-	return api.ErrMediaStatusConflict
+	presigned := &PresignGetObjectRes{}
+	if err := s.objs.PresignGetObject(ctx, &PresignGetObjectCommand{
+		StorageKey: mediaRecord.StorageKey,
+		ExpireIn:   getObjectTTL,
+	}, presigned); err != nil {
+		return err
+	}
+	res.URL = presigned.URL
+	res.URLExpiredAt = presigned.ExpiresAt
+	return nil
 }
 
 func parseMediaType(raw string) (model.MediaType, error) {

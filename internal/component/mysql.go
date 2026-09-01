@@ -36,7 +36,17 @@ func InitMysql(cfg *config.MysqlConfig) (*gorm.DB, error) {
 		time.Duration(cfg.ConnMaxLifetime) * time.Second,
 	)
 
-	err = db.AutoMigrate(&model.User{}, &model.UserProfile{}, &model.Media{})
+	err = db.AutoMigrate(
+		&model.User{},
+		&model.UserProfile{},
+		&model.Media{},
+		&model.Conversation{},
+		&model.ConversationDirect{},
+		&model.ConversationGroup{},
+		&model.ConversationMember{},
+		&model.Message{},
+		&model.MessageAttachment{},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("migrate database failed: %w", err)
 	}

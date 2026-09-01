@@ -54,12 +54,41 @@ type StaticSrcConfig struct {
 }
 
 type RedisConfig struct {
-	Host         string `toml:"host"`
-	Port         int    `toml:"port"`
-	Password     string `toml:"password"`
-	DB           int    `toml:"db"`
-	PoolSize     int    `toml:"poolSize"`
-	MinIdleConns int    `toml:"minIdleConns"`
+	Host           string `toml:"host"`
+	Port           int    `toml:"port"`
+	Password       string `toml:"password"`
+	DB             int    `toml:"db"`
+	PoolSize       int    `toml:"poolSize"`
+	MinIdleConns   int    `toml:"minIdleConns"`
+	MessageChannel string `toml:"messageChannel"`
+}
+
+type KafkaConfig struct {
+	Brokers        []string `toml:"brokers"`
+	ClientID       string   `toml:"clientID"`
+	CommandTopic   string   `toml:"commandTopic"`
+	CommittedTopic string   `toml:"committedTopic"`
+	WriterGroup    string   `toml:"writerGroup"`
+	PushGroup      string   `toml:"pushGroup"`
+	BatchSize      int      `toml:"batchSize"`
+	BatchWait      Duration `toml:"batchWait"`
+	DialTimeout    Duration `toml:"dialTimeout"`
+	ProduceTimeout Duration `toml:"produceTimeout"`
+	WriterTimeout  Duration `toml:"writerTimeout"`
+	WriterRetry    Duration `toml:"writerRetry"`
+	PushTimeout    Duration `toml:"pushTimeout"`
+	PushRetry      Duration `toml:"pushRetry"`
+}
+
+type WebSocketConfig struct {
+	AllowedOrigins   []string `toml:"allowedOrigins"`
+	HandshakeTimeout Duration `toml:"handshakeTimeout"`
+	PingInterval     Duration `toml:"pingInterval"`
+	PongTimeout      Duration `toml:"pongTimeout"`
+	WriteTimeout     Duration `toml:"writeTimeout"`
+	MaxMessageSize   int64    `toml:"maxMessageSize"`
+	SendQueueSize    int      `toml:"sendQueueSize"`
+	TicketTTL        Duration `toml:"ticketTTL"`
 }
 
 type AuthConfig struct {
@@ -84,6 +113,8 @@ type Config struct {
 	LogConfig       `toml:"logConfig"`
 	StaticSrcConfig `toml:"staticSrcConfig"`
 	RedisConfig     `toml:"redisConfig"`
+	KafkaConfig     `toml:"kafkaConfig"`
+	WebSocketConfig `toml:"webSocketConfig"`
 	AuthConfig      `toml:"authConfig"`
 	MinIOConfig     `toml:"minioConfig"`
 }

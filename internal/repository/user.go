@@ -30,6 +30,8 @@ type UserRepository interface {
 	CreateWithProfile(ctx context.Context, user *model.User, profile *model.UserProfile) error
 	FindByPhone(ctx context.Context, phone string) (*model.User, error)
 	FindDetailByID(ctx context.Context, id uint) (*model.User, error)
+	FindByIDs(ctx context.Context, ids []uint) ([]model.User, error)
+	FindDetailsByIDs(ctx context.Context, ids []uint) ([]model.User, error)
 	FindByID(ctx context.Context, id uint) (*model.User, error)
 	UpdateLastLoginAt(ctx context.Context, id uint, at time.Time) error
 	SearchUsers(ctx context.Context, params *SearchUsersParams) ([]model.User, error)
@@ -48,7 +50,7 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 func (r *userRepository) ExistsByPhone(ctx context.Context, phone string) (bool, error) {
 	count, err := gorm.G[model.User](r.db).
 		Select("id").
-		Where("phone = ?", phone).
+		Where("active_phone = ?", phone).
 		Count(ctx, "id")
 
 	if err != nil {
@@ -82,7 +84,7 @@ func (r *userRepository) CreateWithProfile(ctx context.Context, user *model.User
 }
 
 func (r *userRepository) FindByPhone(ctx context.Context, phone string) (*model.User, error) {
-	user, err := gorm.G[model.User](r.db).Where("phone = ?", phone).First(ctx)
+	user, err := gorm.G[model.User](r.db).Where("active_phone = ?", phone).First(ctx)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -134,13 +136,46 @@ func (r *userRepository) FindDetailByID(ctx context.Context, id uint) (*model.Us
 	return &detail, nil
 }
 
+func (r *userRepository) FindByIDs(ctx context.Context, ids []uint) ([]model.User, error) {
+	if len(ids) == 0 {
+		return []model.User{}, nil
+	}
+
+	users, err := gorm.G[model.User](r.db).
+		Select("id", "status").
+		Where("id IN ?", ids).
+		Find(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("find users by ids: %w", err)
+	}
+
+	return users, nil
+}
+
+func (r *userRepository) FindDetailsByIDs(ctx context.Context, ids []uint) ([]model.User, error) {
+	if len(ids) == 0 {
+		return []model.User{}, nil
+	}
+
+	users, err := gorm.G[model.User](r.db).
+		Joins(clause.InnerJoin.Association("Profile"), nil).
+		Joins(clause.LeftJoin.Association("Profile.AvatarMedia"), nil).
+		Where("`user`.`id` IN ?", ids).
+		Find(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("find user details by ids: %w", err)
+	}
+
+	return users, nil
+}
+
 func (r *userRepository) SearchUsers(ctx context.Context, params *SearchUsersParams) ([]model.User, error) {
 	query := gorm.G[model.User](r.db).
 		Joins(clause.InnerJoin.Association("Profile"), nil).
 		Joins(clause.LeftJoin.Association("Profile.AvatarMedia"), nil).
 		Where("`user`.`status` = ?", model.UserStatusNormal)
 	if params.Phone != nil {
-		query = query.Where("`user`.`phone` = ?", *params.Phone)
+		query = query.Where("`user`.`active_phone` = ?", *params.Phone)
 	}
 
 	if params.Nickname != nil {
@@ -172,7 +207,7 @@ func (r *userRepository) SearchUsers(ctx context.Context, params *SearchUsersPar
 	}
 
 	users, err := query.
-		Order(clause.OrderByColumn{Column: clause.Column{Table: "user", Name: "id"}, Desc: true}).
+		Order("`user`.`id` DESC").
 		Limit(params.Limit).Find(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("search users: %w", err)

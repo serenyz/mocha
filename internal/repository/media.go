@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"mmchat/internal/model"
 	"time"
+
+	"mmchat/internal/model"
 
 	"gorm.io/gorm"
 )
@@ -13,6 +14,7 @@ import (
 type MediaRepository interface {
 	Create(ctx context.Context, media *model.Media) error
 	FindByID(ctx context.Context, id uint) (*model.Media, error)
+	ListByIDs(ctx context.Context, ids []uint) ([]model.Media, error)
 	MarkUploaded(ctx context.Context, ID uint, etag string, uploadedAt time.Time) (bool, error)
 }
 
@@ -42,6 +44,18 @@ func (r *mediaRepository) FindByID(ctx context.Context, id uint) (*model.Media, 
 		return nil, fmt.Errorf("find media by id: %w", err)
 	}
 	return &record, nil
+}
+
+func (r *mediaRepository) ListByIDs(ctx context.Context, ids []uint) ([]model.Media, error) {
+	if len(ids) == 0 {
+		return []model.Media{}, nil
+	}
+
+	media, err := gorm.G[model.Media](r.db).Where("id IN ?", ids).Find(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list media by ids: %w", err)
+	}
+	return media, nil
 }
 
 func (r *mediaRepository) MarkUploaded(ctx context.Context, ID uint, etag string, uploadedAt time.Time) (bool, error) {

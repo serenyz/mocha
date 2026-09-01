@@ -2,14 +2,22 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"mmchat/internal/component"
-	"mmchat/internal/config"
 	"time"
 
+	"mmchat/internal/common"
+	"mmchat/internal/component"
+	"mmchat/internal/config"
+	"mmchat/internal/zlog"
+
 	"github.com/minio/minio-go/v7"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
+
+const presignGetCacheSafety = 30 * time.Second
 
 type PresignPutObjectCommand struct {
 	StorageKey    string
@@ -52,17 +60,24 @@ var ErrObjectNotFound = errors.New("object not found")
 
 type minioStorageService struct {
 	client *minio.Client
+	cache  *redis.Client
 	bucket string
 }
 
 var _ ObjectStorageService = (*minioStorageService)(nil)
 
-func NewObjectStorageService(cfg *config.MinIOConfig) (ObjectStorageService, error) {
+func NewObjectStorageService(
+	cfg *config.MinIOConfig,
+	cache *redis.Client,
+) (ObjectStorageService, error) {
+	if cache == nil {
+		return nil, errors.New("object storage cache is nil")
+	}
 	client, err := component.InitMinio(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("init minio client: %w", err)
 	}
-	return &minioStorageService{client: client, bucket: cfg.Bucket}, nil
+	return &minioStorageService{client: client, cache: cache, bucket: cfg.Bucket}, nil
 }
 
 func (s *minioStorageService) PresignPutObject(ctx context.Context, cmd *PresignPutObjectCommand, res *PresignPutObjectRes) error {
@@ -81,6 +96,18 @@ func (s *minioStorageService) PresignPutObject(ctx context.Context, cmd *Presign
 
 func (s *minioStorageService) PresignGetObject(ctx context.Context, cmd *PresignGetObjectCommand, res *PresignGetObjectRes) error {
 	now := time.Now().UTC()
+	cacheSafety := min(presignGetCacheSafety, cmd.ExpireIn/10)
+	cacheKey := common.RedisKeys.PresignGetObjectKey(s.bucket, cmd.StorageKey)
+	value, err := s.cache.Get(ctx, cacheKey).Bytes()
+	if err == nil {
+		cached := &PresignGetObjectRes{}
+		if json.Unmarshal(value, cached) == nil && cached.ExpiresAt.After(now.Add(cacheSafety)) {
+			*res = *cached
+			return nil
+		}
+	} else if !errors.Is(err, redis.Nil) {
+		zlog.Warn("get cached presigned object URL", zap.Error(err))
+	}
 
 	presignUrl, err := s.client.PresignedGetObject(ctx, s.bucket, cmd.StorageKey, cmd.ExpireIn, nil)
 	if err != nil {
@@ -89,6 +116,13 @@ func (s *minioStorageService) PresignGetObject(ctx context.Context, cmd *Presign
 
 	res.URL = presignUrl.String()
 	res.ExpiresAt = now.Add(cmd.ExpireIn)
+	cacheTTL := cmd.ExpireIn - cacheSafety
+	value, err = json.Marshal(res)
+	if err == nil {
+		if err := s.cache.Set(ctx, cacheKey, value, cacheTTL).Err(); err != nil {
+			zlog.Warn("cache presigned object URL", zap.Error(err))
+		}
+	}
 	return nil
 }
 

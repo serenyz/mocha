@@ -1,19 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Description,
-  FieldError,
-  Form,
-  Input,
-  InputOTP,
-  Label,
-  Spinner,
-  Tabs,
-  TextField,
-} from '@heroui/react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   loginAccount,
   persistAuthSession,
@@ -25,6 +10,7 @@ const phonePattern = /^1[3-9]\d{9}$/;
 
 function Icon({ name, size = 20 }) {
   const paths = {
+    chats: <><path d="M5 18.5 3.5 21v-5.2A8 8 0 1 1 7 19.5Z" /><path d="M8 10h8M8 14h5" /></>,
     phone: <><rect x="7" y="2.5" width="10" height="19" rx="2.2" /><path d="M10.5 18.5h3" /></>,
     lock: <><rect x="4" y="10" width="16" height="11" rx="2.5" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
     user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
@@ -41,29 +27,106 @@ function Icon({ name, size = 20 }) {
   );
 }
 
-function HeroField({ label, icon, value, onChange, type = 'text', placeholder, error, autoComplete }) {
+function AuthField({ id, label, icon, value, onChange, type = 'text', placeholder, error, autoComplete }) {
+  const errorId = `${id}-error`;
   return (
-    <TextField fullWidth value={value} onChange={onChange} isInvalid={Boolean(error)}>
-      <Label>{label}</Label>
+    <div className={`auth-field${error ? ' invalid' : ''}`}>
+      <label htmlFor={id}>{label}</label>
       <div className="auth-input-wrap">
         <span className="auth-input-icon"><Icon name={icon} size={18} /></span>
-        <Input type={type} placeholder={placeholder} autoComplete={autoComplete} />
+        <input
+          id={id}
+          type={type}
+          value={value}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
       </div>
-      {error && <FieldError>{error}</FieldError>}
-    </TextField>
+      {error && <p id={errorId} className="auth-field-error" role="alert">{error}</p>}
+    </div>
   );
+}
+
+function Spinner() {
+  return <span className="auth-spinner" aria-hidden="true" />;
 }
 
 function StatusAlert({ notice }) {
   if (!notice) return null;
   return (
-    <Alert status={notice.status} className="auth-alert">
-      <Alert.Indicator><Icon name={notice.status === 'success' ? 'check' : 'info'} size={18} /></Alert.Indicator>
-      <Alert.Content>
-        <Alert.Title>{notice.title}</Alert.Title>
-        <Alert.Description>{notice.description}</Alert.Description>
-      </Alert.Content>
-    </Alert>
+    <div className={`auth-alert ${notice.status || 'accent'}`} role={notice.status === 'danger' ? 'alert' : 'status'}>
+      <span className="auth-alert-icon"><Icon name={notice.status === 'success' ? 'check' : 'info'} size={18} /></span>
+      <span className="auth-alert-copy">
+        <strong>{notice.title}</strong>
+        <span>{notice.description}</span>
+      </span>
+    </div>
+  );
+}
+
+function OtpInput({ value, onChange, error }) {
+  const inputRefs = useRef([]);
+  const slots = Array.from({ length: 6 }, (_, index) => value[index] || '');
+
+  const focusSlot = (index) => inputRefs.current[Math.max(0, Math.min(5, index))]?.focus();
+
+  const writeDigits = (index, rawValue) => {
+    const digits = rawValue.replace(/\D/g, '');
+    if (!digits) {
+      onChange(`${value.slice(0, index)}${value.slice(index + 1)}`);
+      return;
+    }
+
+    const nextValue = `${value.slice(0, index)}${digits}${value.slice(index + digits.length)}`.slice(0, 6);
+    onChange(nextValue);
+    focusSlot(Math.min(5, index + digits.length));
+  };
+
+  const handleKeyDown = (event, index) => {
+    if (event.key === 'Backspace' && !slots[index] && index > 0) {
+      event.preventDefault();
+      onChange(`${value.slice(0, index - 1)}${value.slice(index)}`);
+      focusSlot(index - 1);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      focusSlot(index - 1);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      focusSlot(index + 1);
+    }
+  };
+
+  const handlePaste = (event, index) => {
+    const digits = event.clipboardData.getData('text').replace(/\D/g, '');
+    if (!digits) return;
+    event.preventDefault();
+    writeDigits(index, digits);
+  };
+
+  return (
+    <div className={`auth-otp${error ? ' invalid' : ''}`} role="group" aria-label="6 位短信验证码">
+      {slots.map((digit, index) => (
+        <input
+          key={index}
+          ref={(element) => { inputRefs.current[index] = element; }}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={1}
+          value={digit}
+          aria-label={`验证码第 ${index + 1} 位`}
+          aria-invalid={Boolean(error)}
+          autoComplete={index === 0 ? 'one-time-code' : 'off'}
+          onChange={(event) => writeDigits(index, event.target.value)}
+          onKeyDown={(event) => handleKeyDown(event, index)}
+          onPaste={(event) => handlePaste(event, index)}
+          onFocus={(event) => event.target.select()}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -219,7 +282,7 @@ export default function AuthPage({ initialNotice = null, onAuthenticated }) {
       <section className="auth-showcase" aria-label="Mocha 产品介绍">
         <div className="showcase-glow showcase-glow-one" />
         <div className="showcase-glow showcase-glow-two" />
-        <div className="brand"><span className="brand-mark">M</span><b>Mocha</b><span>团队沟通</span></div>
+        <div className="brand"><span className="brand-mark"><Icon name="chats" size={22} /></span><b>Mocha</b><span>团队沟通</span></div>
         <div className="showcase-copy">
           <span className="showcase-kicker">FOCUS · CONNECT · CREATE</span>
           <h1>沟通应该轻一点，<br />进展应该快一点。</h1>
@@ -233,68 +296,62 @@ export default function AuthPage({ initialNotice = null, onAuthenticated }) {
       </section>
 
       <section className="auth-content">
-        <div className="mobile-brand brand"><span className="brand-mark">M</span><b>Mocha</b></div>
-        <Card className="auth-card" variant="default">
-          <Card.Header>
-            <Card.Title>欢迎使用 Mocha</Card.Title>
-            <Card.Description>登录或创建账号，继续你的团队协作</Card.Description>
-          </Card.Header>
-          <Card.Content>
-            <Tabs selectedKey={tab} onSelectionChange={switchTab} variant="secondary" className="auth-tabs">
-              <Tabs.ListContainer>
-                <Tabs.List aria-label="登录与注册">
-                  <Tabs.Tab id="login">登录</Tabs.Tab>
-                  <Tabs.Tab id="register">注册</Tabs.Tab>
-                </Tabs.List>
-              </Tabs.ListContainer>
+        <div className="mobile-brand brand"><span className="brand-mark"><Icon name="chats" size={21} /></span><b>Mocha</b></div>
+        <div className="auth-card">
+          <header className="auth-card-header">
+            <h1>欢迎使用 Mocha</h1>
+            <p>登录或创建账号，继续你的团队协作</p>
+          </header>
+          <div className="auth-card-content">
+            <div className="auth-tabs">
+              <div className="auth-tab-list" role="tablist" aria-label="登录与注册">
+                <button id="login-tab" type="button" role="tab" aria-selected={tab === 'login'} aria-controls="login-panel" tabIndex={tab === 'login' ? 0 : -1} onClick={() => switchTab('login')}>登录</button>
+                <button id="register-tab" type="button" role="tab" aria-selected={tab === 'register'} aria-controls="register-panel" tabIndex={tab === 'register' ? 0 : -1} onClick={() => switchTab('register')}>注册</button>
+              </div>
 
-              <Tabs.Panel id="login">
-                <Form className="auth-form" onSubmit={handleLogin}>
-                  <HeroField label="手机号" icon="phone" value={phone} onChange={updateField('phone', setPhone)} placeholder="请输入手机号" error={errors.phone} autoComplete="tel" />
-                  <HeroField label="密码" icon="lock" value={password} onChange={updateField('password', setPassword)} type="password" placeholder="请输入密码" error={errors.password} autoComplete="current-password" />
-                  <div className="login-options">
-                    <Checkbox isSelected={remember} onChange={setRemember}>
-                      <Checkbox.Content>
-                        <Checkbox.Control><Checkbox.Indicator><Icon name="check" size={14} /></Checkbox.Indicator></Checkbox.Control>
-                        保持登录
-                      </Checkbox.Content>
-                    </Checkbox>
-                    <Button type="button" variant="tertiary" size="sm" onPress={() => setNotice({ status: 'accent', title: '重置密码', description: '请联系管理员重置密码。' })}>忘记密码？</Button>
-                  </div>
-                  <Button type="submit" variant="primary" size="lg" fullWidth isDisabled={submitting}>
-                    {submitting ? <><Spinner size="sm" color="current" />正在验证</> : <>登录 Mocha <Icon name="arrow" size={18} /></>}
-                  </Button>
-                </Form>
-              </Tabs.Panel>
+              {tab === 'login' && (
+                <section id="login-panel" className="auth-tab-panel" role="tabpanel" aria-labelledby="login-tab">
+                  <form className="auth-form" onSubmit={handleLogin} noValidate>
+                    <AuthField id="login-phone" label="手机号" icon="phone" value={phone} onChange={updateField('phone', setPhone)} placeholder="请输入手机号" error={errors.phone} autoComplete="tel" />
+                    <AuthField id="login-password" label="密码" icon="lock" value={password} onChange={updateField('password', setPassword)} type="password" placeholder="请输入密码" error={errors.password} autoComplete="current-password" />
+                    <div className="login-options">
+                      <label className="auth-checkbox">
+                        <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
+                        <span className="auth-checkbox-control"><Icon name="check" size={14} /></span>
+                        <span>保持登录</span>
+                      </label>
+                      <button className="auth-link-button" type="button" onClick={() => setNotice({ status: 'accent', title: '重置密码', description: '请联系管理员重置密码。' })}>忘记密码？</button>
+                    </div>
+                    <button className="auth-submit" type="submit" disabled={submitting}>
+                      {submitting ? <><Spinner />正在验证</> : <>登录 Mocha <Icon name="arrow" size={18} /></>}
+                    </button>
+                  </form>
+                </section>
+              )}
 
-              <Tabs.Panel id="register">
-                <Form className="auth-form" onSubmit={handleRegister}>
-                  <HeroField label="手机号" icon="phone" value={phone} onChange={updateField('phone', setPhone)} placeholder="请输入手机号" error={errors.phone} autoComplete="tel" />
-                  <div className="code-heading"><Label>短信验证码</Label><Button type="button" variant="secondary" size="sm" isDisabled={sending || countdown > 0} onPress={handleSendCode}>{sending ? <><Spinner size="sm" />发送中</> : countdown ? `${countdown}s 后重发` : '获取验证码'}</Button></div>
-                  <InputOTP value={code} onChange={updateField('code', setCode)} maxLength={6} isInvalid={Boolean(errors.code)} aria-label="6 位短信验证码">
-                    <InputOTP.Group>{Array.from({ length: 6 }, (_, index) => <InputOTP.Slot index={index} key={index} />)}</InputOTP.Group>
-                  </InputOTP>
-                  {errors.code && <p className="standalone-error">{errors.code}</p>}
-                  <HeroField label="你的名字" icon="user" value={name} onChange={updateField('name', setName)} placeholder="方便团队伙伴找到你" error={errors.name} autoComplete="name" />
-                  <HeroField label="设置密码" icon="lock" value={password} onChange={updateField('password', setPassword)} type="password" placeholder="至少 8 位" error={errors.password} autoComplete="new-password" />
-                  <Button type="submit" variant="primary" size="lg" fullWidth isDisabled={submitting}>
-                    {submitting ? <><Spinner size="sm" color="current" />正在提交</> : <>创建账号 <Icon name="arrow" size={18} /></>}
-                  </Button>
-                  <Description className="agreement">注册即表示你同意服务条款与隐私政策</Description>
-                </Form>
-              </Tabs.Panel>
-            </Tabs>
+              {tab === 'register' && (
+                <section id="register-panel" className="auth-tab-panel" role="tabpanel" aria-labelledby="register-tab">
+                  <form className="auth-form" onSubmit={handleRegister} noValidate>
+                    <AuthField id="register-phone" label="手机号" icon="phone" value={phone} onChange={updateField('phone', setPhone)} placeholder="请输入手机号" error={errors.phone} autoComplete="tel" />
+                    <div className="code-heading"><label>短信验证码</label><button className="auth-code-button" type="button" disabled={sending || countdown > 0} onClick={handleSendCode}>{sending ? <><Spinner />发送中</> : countdown ? `${countdown}s 后重发` : '获取验证码'}</button></div>
+                    <OtpInput value={code} onChange={updateField('code', setCode)} error={errors.code} />
+                    {errors.code && <p className="standalone-error" role="alert">{errors.code}</p>}
+                    <AuthField id="register-name" label="你的名字" icon="user" value={name} onChange={updateField('name', setName)} placeholder="方便团队伙伴找到你" error={errors.name} autoComplete="name" />
+                    <AuthField id="register-password" label="设置密码" icon="lock" value={password} onChange={updateField('password', setPassword)} type="password" placeholder="至少 8 位" error={errors.password} autoComplete="new-password" />
+                    <button className="auth-submit" type="submit" disabled={submitting}>
+                      {submitting ? <><Spinner />正在提交</> : <>创建账号 <Icon name="arrow" size={18} /></>}
+                    </button>
+                    <p className="agreement">注册即表示你同意服务条款与隐私政策</p>
+                  </form>
+                </section>
+              )}
+            </div>
 
             <StatusAlert notice={notice} />
-            {!notice && (
-              <Alert status="accent" className="auth-alert">
-                <Alert.Indicator><Icon name="info" size={18} /></Alert.Indicator>
-                <Alert.Content><Alert.Title>账号安全</Alert.Title><Alert.Description>验证码 5 分钟内有效；请勿将验证码或密码告诉他人。</Alert.Description></Alert.Content>
-              </Alert>
-            )}
-          </Card.Content>
-          <Card.Footer><span>© 2026 Mocha</span><span>安全 · 简单 · 专注</span></Card.Footer>
-        </Card>
+            {!notice && <StatusAlert notice={{ status: 'accent', title: '账号安全', description: '验证码 5 分钟内有效；请勿将验证码或密码告诉他人。' }} />}
+          </div>
+          <footer className="auth-card-footer"><span>© 2026 Mocha</span><span>安全 · 简单 · 专注</span></footer>
+        </div>
       </section>
     </main>
   );

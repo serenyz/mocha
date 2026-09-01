@@ -23,10 +23,11 @@ type MediaUpload struct {
 
 type CompleteMediaUploadResponse struct {
 	MediaID      uint      `json:"media_id"`
+	Type         string    `json:"type"`
 	Filename     string    `json:"filename"`
 	MIMEType     string    `json:"mime_type"`
-	FileSize     int64     `json:"filesize"`
-	MediaURL     string    `json:"media_url"`
+	Size         int64     `json:"size"`
+	URL          string    `json:"url"`
 	URLExpiredAt time.Time `json:"url_expired_at"`
 	Status       string    `json:"status"`
 }

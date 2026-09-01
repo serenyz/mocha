@@ -119,7 +119,7 @@ func (s *userService) GetMe(ctx context.Context, cmd *GetMeCommand, res *GetMeRe
 	}
 
 	res.ID = detail.ID
-	res.Phone = *detail.Phone
+	res.Phone = detail.Phone
 	res.Email = detail.Email
 	res.Nickname = detail.Profile.Nickname
 	res.Gender = detail.Profile.Gender
@@ -143,7 +143,7 @@ func (s *userService) UpdateMe(ctx context.Context, cmd *UpdateMeCommand, res *U
 	}
 
 	res.ID = old.ID
-	res.Phone = *old.Phone
+	res.Phone = old.Phone
 	res.Email = old.Email
 	res.CreatedAt = old.CreatedAt
 	res.Nickname = old.Profile.Nickname

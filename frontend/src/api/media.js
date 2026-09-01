@@ -2,11 +2,18 @@ import { AuthApiError, authenticatedRequest } from './auth';
 
 const MEDIA_PATH = '/api/v1/media/uploads';
 
+export function mediaTypeForFile(file) {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type.startsWith('video/')) return 'video';
+  if (file.type.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
 export function requestMediaUpload(file) {
   return authenticatedRequest(MEDIA_PATH, {
     method: 'POST',
     body: JSON.stringify({
-      type: 'image',
+      type: mediaTypeForFile(file),
       filename: file.name,
       mime_type: file.type,
       size: file.size,
@@ -27,11 +34,11 @@ export async function uploadMediaFile(file, upload) {
       body: file,
     });
   } catch {
-    throw new AuthApiError('图片上传失败，请检查网络后重试', 'MEDIA_UPLOAD_FAILED');
+    throw new AuthApiError('附件上传失败，请检查网络后重试', 'MEDIA_UPLOAD_FAILED');
   }
 
   if (!response.ok) {
-    throw new AuthApiError(`图片上传失败（${response.status}）`, 'MEDIA_UPLOAD_FAILED', response.status);
+    throw new AuthApiError(`附件上传失败（${response.status}）`, 'MEDIA_UPLOAD_FAILED', response.status);
   }
 }
 

@@ -85,10 +85,11 @@ func (h *MediaHandler) completeUpload(c *gin.Context) error {
 
 	api.OK[dto.CompleteMediaUploadResponse](c, http.StatusOK, dto.CompleteMediaUploadResponse{
 		MediaID:      res.MediaID,
+		Type:         string(res.Type),
 		Filename:     res.Filename,
 		MIMEType:     res.MIMEType,
-		FileSize:     res.FileSize,
-		MediaURL:     res.MediaURL,
+		Size:         res.Size,
+		URL:          res.URL,
 		Status:       res.Status,
 		URLExpiredAt: res.URLExpiredAt,
 	})

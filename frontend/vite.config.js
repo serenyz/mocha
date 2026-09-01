@@ -1,11 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
 
 const proxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:6666';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
   build: {
     target: 'es2022',
     cssTarget: 'chrome120',
@@ -24,6 +23,7 @@ export default defineConfig({
       '/api': {
         target: proxyTarget,
         changeOrigin: true,
+        ws: true,
       },
       '/static': {
         target: proxyTarget,

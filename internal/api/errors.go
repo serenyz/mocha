@@ -1,8 +1,6 @@
 package api
 
-import (
-	"net/http"
-)
+import "net/http"
 
 type AppError struct {
 	status  int
@@ -41,6 +39,9 @@ var (
 	ErrUnauthenticated         = New(http.StatusUnauthorized, "UNAUTHENTICATED", "请先登录")
 	ErrInvalidRefreshToken     = New(http.StatusUnauthorized, "INVALID_REFRESH_TOKEN", "登录状态已失效，请重新登录")
 	ErrUserNotFound            = New(http.StatusNotFound, "USER_NOT_FOUND", "用户不存在")
+	ErrConversationNotFound    = New(http.StatusNotFound, "CONVERSATION_NOT_FOUND", "会话不存在")
+	ErrMessageNotFound         = New(http.StatusNotFound, "MESSAGE_NOT_FOUND", "消息不存在")
+	ErrInvalidGroupName        = New(http.StatusBadRequest, "INVALID_GROUP_NAME", "群名称格式不正确")
 	ErrInvalidGender           = New(http.StatusBadRequest, "INVALID_GENDER", "性别参数不正确")
 	ErrInvalidSignature        = New(http.StatusBadRequest, "INVALID_SIGNATURE", "个性签名格式不正确")
 	ErrInvalidBirthday         = New(http.StatusBadRequest, "INVALID_BIRTHDAY", "生日格式不正确")

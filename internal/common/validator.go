@@ -45,39 +45,45 @@ func ValidatePassword(password string) error {
 }
 
 func NormalizeNickname(raw string) (string, error) {
+	return normalizeDisplayName(raw, api.ErrInvalidNickname)
+}
+
+func NormalizeGroupName(raw string) (string, error) {
+	return normalizeDisplayName(raw, api.ErrInvalidGroupName)
+}
+
+func normalizeDisplayName(raw string, invalid error) (string, error) {
 	if !utf8.ValidString(raw) {
-		return "", api.ErrInvalidNickname
+		return "", invalid
 	}
 
 	// 将等价的 Unicode 表示统一为 NFC。
-	nickname := norm.NFC.String(raw)
+	name := norm.NFC.String(raw)
 
-	for _, r := range nickname {
+	for _, r := range name {
 		// Cc：换行、制表符等控制字符
 		if unicode.IsControl(r) {
-			return "", api.ErrInvalidNickname
+			return "", invalid
 		}
 
 		// Cf：零宽字符、双向文本控制符等格式字符
 		if unicode.Is(unicode.Cf, r) {
-			return "", api.ErrInvalidNickname
+			return "", invalid
 		}
 	}
 
 	// 去除首尾空白，并压缩连续空白。
-	nickname = strings.Join(strings.Fields(nickname), " ")
+	name = strings.Join(strings.Fields(name), " ")
 
-	length := utf8.RuneCountInString(nickname)
+	length := utf8.RuneCountInString(name)
 	if length < 1 || length > 50 {
-		return "", api.ErrInvalidNickname
+		return "", invalid
 	}
 
-	return nickname, nil
+	return name, nil
 }
 
-func NormalizeSignature(
-	raw string,
-) (string, error) {
+func NormalizeSignature(raw string) (string, error) {
 	if !utf8.ValidString(raw) {
 		return "", api.ErrInvalidSignature
 	}

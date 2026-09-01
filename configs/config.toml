@@ -32,6 +32,33 @@ password = "123456"
 db = 0
 poolSize = 20
 minIdleConns = 5
+messageChannel = "chat.message.push.v1"
+
+[kafkaConfig]
+brokers = ["127.0.0.1:9092"]
+clientID = "mocha"
+commandTopic = "chat.message.command.v1"
+committedTopic = "chat.message.committed.v1"
+writerGroup = "mocha-message-writer"
+pushGroup = "mocha-message-push"
+batchSize = 1024
+batchWait = "5s"
+dialTimeout = "3s"
+produceTimeout = "3s"
+writerTimeout = "10m"
+writerRetry = "1s"
+pushTimeout = "10s"
+pushRetry = "1s"
+
+[webSocketConfig]
+allowedOrigins = ["http://127.0.0.1:5173"]
+handshakeTimeout = "5s"
+pingInterval = "25s"
+pongTimeout = "60s"
+writeTimeout = "10s"
+maxMessageSize = 65536
+sendQueueSize = 256
+ticketTTL = '30s'
 
 [authConfig]
 issuer = "mocha"

@@ -149,7 +149,7 @@ func (s *authService) Register(ctx context.Context, cmd *RegisterCommand) error 
 	}
 
 	user := &model.User{
-		Phone:        &phone,
+		Phone:        phone,
 		PasswordHash: string(PasswordHash),
 		Role:         model.UserRoleNormal,
 		Status:       model.UserStatusNormal,
